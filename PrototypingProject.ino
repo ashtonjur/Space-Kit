@@ -1,19 +1,27 @@
 #include <Adafruit_NeoPixel.h>
+#include <Servo.h>
 
-const int distancePin = A1;   
-const int lightPin = A0;     
-const int potPin = A3;
+const int distancePin = A1;
+const int lightPin = A0;
+const int potLedPin = A3;
+const int potServoPin = A4;
 const int buttonPin = 2;
-const int ledPin = A2;        
-const int numPixels = 30;    
+const int ledPin = A2; 
+const int numPixels = 30;
 
-const float MAX_RANG = 520.0;    
+const int servo1Pin = 9;
+const int servo2Pin = 10;
+
+const float MAX_RANG = 520.0;
 const float ADC_SOLUTION = 1023.0;
 const float TARGET_LUX = 750.0; 
 
 const float SMOOTHING_FACTOR = 0.05;
 
 Adafruit_NeoPixel strip(numPixels, ledPin, NEO_GRB + NEO_KHZ800);
+
+Servo servo1;
+Servo servo2;
 
 float distanceCm = 0.0;
 int lightRaw;
@@ -24,10 +32,13 @@ bool isManualMode = false;
 bool lastButtonState = HIGH;
 
 void setup() {
-  Serial.begin(9600);      
+  Serial.begin(9600);
   strip.begin();
-  strip.show();            
+  strip.show(); 
   pinMode(buttonPin, INPUT_PULLUP);
+
+  servo1.attach(servo1Pin);
+  servo2.attach(servo2Pin);
 }
 
 void loop() {
@@ -38,18 +49,25 @@ void loop() {
   }
   lastButtonState = currentButtonState;
 
+  int potServoRaw = analogRead(potServoPin);
+  int servoAngle = map(potServoRaw, 0, 1023, 0, 180);
+  servo1.write(servoAngle);
+  servo2.write(servoAngle);
+
   int brightness = 0;
 
   if (isManualMode) {
-    int potRaw = analogRead(potPin);
-    brightness = map(potRaw, 0, 1023, 0, 255);
+    int potLedRaw = analogRead(potLedPin);
+    brightness = map(potLedRaw, 0, 1023, 0, 255);
+    
     int rawDistance = analogRead(distancePin); 
     distanceCm = (rawDistance * MAX_RANG) / ADC_SOLUTION;
 
-    Serial.print("Mode: MANUAL | Distance: ");
+    Serial.print("Mode: MANUAL LED | Distance: ");
     Serial.print(distanceCm, 1);
-    Serial.print(" cm | ");
-    Serial.print(" | LED Brightness: ");
+    Serial.print(" cm | Servo: ");
+    Serial.print(servoAngle);
+    Serial.print("° | LED Brightness: ");
     Serial.print(brightness);
     Serial.println("/255");
   } else {
@@ -65,29 +83,25 @@ void loop() {
       filteredLux = (luxValue * SMOOTHING_FACTOR) + (filteredLux * (1.0 - SMOOTHING_FACTOR));
     }
 
-    static int autoBrightness = 0;
-    const float LUX_DEADZONE = 15.0;
+    float missingLux = TARGET_LUX - filteredLux;
+    if (missingLux < 0) missingLux = 0;
 
-    if (filteredLux < (TARGET_LUX - LUX_DEADZONE)) {
-      if (autoBrightness < 255) autoBrightness += 2;
-    } 
-    else if (filteredLux > (TARGET_LUX + LUX_DEADZONE)) {
-      if (autoBrightness > 0) autoBrightness -= 2;
-    }
+    brightness = (missingLux / TARGET_LUX) * 255.0;
+    if (brightness > 255) brightness = 255;
+    if (brightness < 0) brightness = 0;
 
-    brightness = autoBrightness;
-
-    Serial.print("Mode: AUTO | Distance: ");
+    Serial.print("Mode: AUTO LED | Distance: ");
     Serial.print(distanceCm, 1);
     Serial.print(" cm | ");
     Serial.print(filteredLux, 0);
-    Serial.print(" Lux | LED Brightness: ");
+    Serial.print(" Lux | Servo: ");
+    Serial.print(servoAngle);
+    Serial.print("° | LED Brightness: ");
     Serial.print(brightness);
     Serial.println("/255");
   }
 
   strip.setBrightness(brightness);
-
   for (int i = 0; i < numPixels; i++) {
     strip.setPixelColor(i, strip.Color(255, 147, 41));
   }
