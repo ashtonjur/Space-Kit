@@ -34,7 +34,7 @@ void loop() {
   bool currentButtonState = digitalRead(buttonPin);
   if (currentButtonState == LOW && lastButtonState == HIGH) {
     isManualMode = !isManualMode;
-    delay(50);
+    delay(100);
   }
   lastButtonState = currentButtonState;
 
@@ -65,13 +65,17 @@ void loop() {
       filteredLux = (luxValue * SMOOTHING_FACTOR) + (filteredLux * (1.0 - SMOOTHING_FACTOR));
     }
 
-    float missingLux = TARGET_LUX - filteredLux;
-    if (missingLux < 0) missingLux = 0;
+    static int autoBrightness = 0;
+    const float LUX_DEADZONE = 15.0;
 
-    brightness = (missingLux / TARGET_LUX) * 255.0;
-    if (brightness > 255) brightness = 255;
-    if (brightness < 0) brightness = 0;
+    if (filteredLux < (TARGET_LUX - LUX_DEADZONE)) {
+      if (autoBrightness < 255) autoBrightness += 2;
+    } 
+    else if (filteredLux > (TARGET_LUX + LUX_DEADZONE)) {
+      if (autoBrightness > 0) autoBrightness -= 2;
+    }
 
+    brightness = autoBrightness;
 
     Serial.print("Mode: AUTO | Distance: ");
     Serial.print(distanceCm, 1);
