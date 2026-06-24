@@ -3,20 +3,23 @@
 
 const int distancePin = A1;
 const int lightPin = A0;
-const int potLedPin = A3;
-const int potServoPin = A4;
 const int buttonPin = 2;
-const int ledPin = A2; 
+const int ledPin = 3; 
+const int potLedPin = 4;
+const int potServoPin = 5;
+const int servo1Pin = 8;
+const int servo2Pin = 9;
+
 const int numPixels = 30;
 
-const int servo1Pin = 9;
-const int servo2Pin = 10;
+
 
 const float MAX_RANG = 520.0;
 const float ADC_SOLUTION = 1023.0;
 const float TARGET_LUX = 750.0; 
 
 const float SMOOTHING_FACTOR = 0.05;
+const float OPEN_THRESHOLD_CM = 50.0;
 
 Adafruit_NeoPixel strip(numPixels, ledPin, NEO_GRB + NEO_KHZ800);
 
@@ -28,7 +31,7 @@ int lightRaw;
 float luxValue;
 float filteredLux = -1.0;
 
-bool isManualMode = false;
+bool isManualMode = true;
 bool lastButtonState = HIGH;
 
 void setup() {
@@ -42,44 +45,50 @@ void setup() {
 }
 
 void loop() {
+  int rawDistance = analogRead(distancePin); 
+  distanceCm = (rawDistance * MAX_RANG) / ADC_SOLUTION;
+
   bool currentButtonState = digitalRead(buttonPin);
   if (currentButtonState == LOW && lastButtonState == HIGH) {
-    isManualMode = !isManualMode;
+    isManualMode = false;
     delay(100);
   }
   lastButtonState = currentButtonState;
 
+  if (distanceCm > OPEN_THRESHOLD_CM && !isManualMode) {
+    isManualMode = false;
+    delay(200);
+  }
+
   int potServoRaw = analogRead(potServoPin);
-  int servoAngle = map(potServoRaw, 0, 1023, 0, 180);
-  servo1.write(servoAngle);
-  servo2.write(servoAngle);
+  int angleOffset = map(potServoRaw, 0, 1023, 0, 90);
+
+  int s1Angle = 90 + angleOffset;
+  int s2Angle = 180 - angleOffset;
+
+  servo1.write(s1Angle);
+  servo2.write(s2Angle);
 
   int brightness = 0;
 
-  if (isManualMode) {
+  if (distanceCm > OPEN_THRESHOLD_CM && isManualMode) {
     int potLedRaw = analogRead(potLedPin);
     brightness = map(potLedRaw, 0, 1023, 0, 255);
-    
-    int rawDistance = analogRead(distancePin); 
-    distanceCm = (rawDistance * MAX_RANG) / ADC_SOLUTION;
 
     Serial.print("Mode: MANUAL LED | Distance: ");
     Serial.print(distanceCm, 1);
-    Serial.print(" cm | Servo: ");
-    Serial.print(servoAngle);
+    Serial.print(" cm | Servo1: ");
+    Serial.print(s1Angle);
+    Serial.print("° | Servo2: ");
+    Serial.print(s2Angle);
     Serial.print("° | LED Brightness: ");
     Serial.print(brightness);
     Serial.println("/255");
-  } else {
-    int rawDistance = analogRead(distancePin); 
-    distanceCm = (rawDistance * MAX_RANG) / ADC_SOLUTION;
-
+  } if (distanceCm > OPEN_THRESHOLD_CM && !isManualMode) {
     lightRaw = analogRead(lightPin);
     luxValue = (lightRaw / ADC_SOLUTION) * 6000.0;
 
     if (filteredLux < 0) {
-      filteredLux = luxValue;
-    } else {
       filteredLux = (luxValue * SMOOTHING_FACTOR) + (filteredLux * (1.0 - SMOOTHING_FACTOR));
     }
 
@@ -94,11 +103,16 @@ void loop() {
     Serial.print(distanceCm, 1);
     Serial.print(" cm | ");
     Serial.print(filteredLux, 0);
-    Serial.print(" Lux | Servo: ");
-    Serial.print(servoAngle);
+    Serial.print(" Lux | Servo1: ");
+    Serial.print(s1Angle);
+    Serial.print("° | Servo2: ");
+    Serial.print(s2Angle);
     Serial.print("° | LED Brightness: ");
     Serial.print(brightness);
     Serial.println("/255");
+  } if (distanceCm < OPEN_THRESHOLD_CM) {
+    brightness = 0;
+    Serial.print("CLOSED");
   }
 
   strip.setBrightness(brightness);
